@@ -8,6 +8,179 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- langstage-session-isolation -->
+    <script>
+      (function () {
+        try {
+          var p = new URLSearchParams(window.location.search);
+          var sid = p.get("sessionId");
+          var skillName = p.get("skillName") || "";
+          if (!sid) return;
+
+          var tabKey = "langstage-session:" + sid;
+          var _get = Storage.prototype.getItem;
+          var _set = Storage.prototype.setItem;
+          var _del = Storage.prototype.removeItem;
+
+          Storage.prototype.getItem = function (k) {
+            if (this === localStorage && k === "langstage-session") {
+              return _get.call(this, tabKey) || null;
+            }
+            return _get.call(this, k);
+          };
+          Storage.prototype.setItem = function (k, v) {
+            if (this === localStorage && k === "langstage-session") {
+              _set.call(this, tabKey, v);
+              return;
+            }
+            _set.call(this, k, v);
+          };
+          Storage.prototype.removeItem = function (k) {
+            if (this === localStorage && k === "langstage-session") {
+              _del.call(this, tabKey);
+              return;
+            }
+            _del.call(this, k);
+          };
+
+          var _guardActive = false;
+          var _sessionAuthorized = false;
+
+          var _disableInputs = function () {
+            try {
+              var ta = document.querySelectorAll("textarea,input[type='text'],[contenteditable='true'],[role='textbox']");
+              for (var i = 0; i < ta.length; i++) {
+                ta[i].disabled = true;
+                ta[i].style.opacity = "0.4";
+              }
+              var btns = document.querySelectorAll("button[type='submit']");
+              for (var j = 0; j < btns.length; j++) btns[j].disabled = true;
+            } catch (_e) {}
+          };
+
+          var _showBlock = function (msg, color) {
+            try {
+              _guardActive = true;
+              _sessionAuthorized = false;
+              var el = document.getElementById("_arlie_block");
+              if (!el) {
+                el = document.createElement("div");
+                el.id = "_arlie_block";
+                el.style.cssText =
+                  "position:fixed;bottom:0;left:0;right:0;z-index:9998;" +
+                  "padding:14px 20px;text-align:center;font-size:14px;font-weight:500;" +
+                  "font-family:system-ui,sans-serif;backdrop-filter:blur(4px);pointer-events:none;";
+                document.body.appendChild(el);
+              }
+              el.style.background = color || "rgba(220,38,38,0.92)";
+              el.style.color = "#fff";
+              el.textContent = msg;
+            } catch (_e) {}
+            _disableInputs();
+          };
+
+          var _observer = null;
+          var _startObserver = function () {
+            if (_observer) return;
+            _observer = new MutationObserver(function () {
+              if (_guardActive) _disableInputs();
+            });
+            if (document.body) _observer.observe(document.body, { childList: true, subtree: true });
+          };
+
+          var _OrigES = window.EventSource;
+          window.EventSource = function (url, cfg) {
+            try {
+              if (_guardActive || _sessionAuthorized === false) {
+                throw new Error("session blocked");
+              }
+              if (typeof url === "string" && url.indexOf("/api/stream") >= 0) {
+                var u = new URL(url, window.location.origin);
+                if (!u.searchParams.has("playground_session_id")) {
+                  u.searchParams.set("playground_session_id", sid);
+                }
+                if (skillName && !u.searchParams.has("playground_skill_name")) {
+                  u.searchParams.set("playground_skill_name", skillName);
+                }
+                url = u.toString();
+              }
+            } catch (_e) {}
+            return new _OrigES(url, cfg);
+          };
+          window.EventSource.prototype = _OrigES.prototype;
+
+          var _prefill = function () {
+            try {
+              if (!skillName) return;
+              var el = document.querySelector("textarea,input[type='text'],[contenteditable='true'],[role='textbox']");
+              if (!el) return;
+              var prefix = "/" + skillName + " ";
+              var current = typeof el.value === "string" ? el.value : el.textContent || "";
+              if (!current) {
+                if (typeof el.value === "string") el.value = prefix;
+                else el.textContent = prefix;
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+              }
+            } catch (_e) {}
+          };
+          setTimeout(_prefill, 300);
+          setTimeout(_prefill, 1000);
+          setTimeout(_prefill, 2000);
+          setTimeout(_prefill, 4000);
+
+          var _origFetch = window.fetch.bind(window);
+          window.fetch = function (input, init) {
+            try {
+              var raw = typeof input === "string" ? input : input instanceof Request ? input.url : String(input);
+              var parsed = new URL(raw, window.location.origin);
+              var path = parsed.pathname || "";
+              var isChatApi =
+                path === "/api/chat" ||
+                path.indexOf("/api/chat/") === 0 ||
+                path === "/api/stream" ||
+                path.indexOf("/api/stream/") === 0;
+              if (isChatApi && (_guardActive || _sessionAuthorized === false)) {
+                return Promise.reject(new Error("Not authorized for this session"));
+              }
+
+              var isFilesApi = path === "/api/files" || path.indexOf("/api/files/") === 0;
+              if (isFilesApi && !parsed.searchParams.has("session_id")) {
+                parsed.searchParams.set("session_id", sid);
+                var nextUrl = parsed.toString();
+                input = typeof input === "string" ? nextUrl : new Request(nextUrl, input);
+              }
+            } catch (_e) {}
+            return _origFetch(input, init);
+          };
+
+          var _checkSession = function () {
+            fetch("/api/session-status?session_id=" + encodeURIComponent(sid), { credentials: "include" })
+              .then(function (r) {
+                return r.json();
+              })
+              .then(function (d) {
+                if (d.authorized === false) {
+                  _showBlock("Not authorized - this session belongs to another user.", "rgba(124,45,18,0.95)");
+                  _startObserver();
+                  return;
+                }
+                _sessionAuthorized = true;
+                if (d.expired) {
+                  _showBlock("Session expired. Please start a new playground session.", "rgba(30,30,40,0.95)");
+                  _startObserver();
+                }
+              })
+              .catch(function () {
+                _showBlock("Session authorization check failed. Access is blocked for safety.", "rgba(124,45,18,0.95)");
+                _startObserver();
+              });
+          };
+
+          _checkSession();
+          setInterval(_checkSession, 15000);
+        } catch (_e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

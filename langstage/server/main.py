@@ -22,7 +22,7 @@ from langstage.server.routes_cron import create_cron_router
 from langstage.server.routes_tasks import create_tasks_router
 from langstage.scheduler import CronScheduler, set_scheduler
 from langstage.tasks import SqliteTaskStore
-from langstage.workspace.file_manager import FileManager
+from langstage.workspace.file_manager import FileManager, _SESSION_CV
 from langstage.workspace.canvas_manager import CanvasManager
 
 
@@ -138,6 +138,18 @@ def create_fastapi_app(
         auth_password=config.auth_password,
     )
 
+    @app.middleware("http")
+    async def _session_file_middleware(request, call_next):
+        path = request.url.path or ""
+        sid = request.query_params.get("session_id", "")
+        if (path == "/api/files" or path.startswith("/api/files/")) and not sid:
+            return JSONResponse({"detail": "missing session_id for file request"}, status_code=400)
+        token = _SESSION_CV.set(sid)
+        try:
+            return await call_next(request)
+        finally:
+            _SESSION_CV.reset(token)
+
     # Shared services
     file_manager = FileManager(workspace)
     canvas_manager = CanvasManager(workspace)
@@ -223,6 +235,77 @@ def create_fastapi_app(
         return JSONResponse(
             {"status": "ok" if ok else "degraded", "version": _app_version(), "checks": checks},
             status_code=200 if ok else 503,
+        )
+
+    @app.get("/api/session-status")
+    async def session_status(request):
+        import asyncio
+        import json
+        import os
+        from datetime import datetime, timezone
+        from urllib import error as url_error, parse as url_parse
+        from urllib import request as url_request
+
+        session_id = request.query_params.get("session_id", "")
+        user_email = (
+            request.headers.get("x-authentik-email", "")
+            or request.headers.get("x-forwarded-email", "")
+            or request.headers.get("x-auth-request-email", "")
+        ).strip().lower()
+
+        if not session_id:
+            return JSONResponse({"authorized": False, "expired": False, "error": "missing_session_id"}, status_code=400)
+
+        api_base = os.getenv(
+            "SKILLS_HUB_API_BASE_URL",
+            os.getenv("ARLIE_BASE_URL", "https://cvchatapp.commvault.com/api/v1"),
+        ).rstrip("/")
+        api_key = os.getenv("ARLIE_API_KEY", "")
+        sid = url_parse.quote(session_id, safe="")
+        url = f"{api_base}/skills-hub/playground/session/{sid}"
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["x-api-key"] = api_key
+
+        def _fetch_session():
+            req = url_request.Request(url=url, method="GET", headers=headers)
+            try:
+                with url_request.urlopen(req, timeout=8) as resp:
+                    return json.loads(resp.read().decode("utf-8")), resp.status
+            except url_error.HTTPError as exc:
+                return None, exc.code
+            except Exception:
+                return None, 0
+
+        data, http_status = await asyncio.to_thread(_fetch_session)
+        if data is None or http_status == 404:
+            return JSONResponse({"authorized": False, "expired": False, "error": "session_not_found"}, status_code=200)
+        if http_status not in (200, 410):
+            return JSONResponse({"authorized": False, "expired": False, "error": "upstream_error"}, status_code=200)
+
+        owner_id = (data.get("owner_id") or "").strip().lower()
+        status = data.get("status", "")
+        expires_at = data.get("expires_at", "")
+
+        expired = http_status == 410 or status in ("expired", "closed")
+        if not expired and expires_at:
+            try:
+                exp = datetime.fromisoformat(expires_at)
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                expired = datetime.now(timezone.utc) >= exp
+            except ValueError:
+                pass
+
+        authorized = bool(user_email) and bool(owner_id) and owner_id == user_email
+
+        return JSONResponse(
+            {
+                "authorized": authorized,
+                "expired": expired,
+                "expires_at": expires_at,
+                "owner_id": owner_id,
+            }
         )
 
     # Expose for testing

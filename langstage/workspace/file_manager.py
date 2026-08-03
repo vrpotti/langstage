@@ -1,7 +1,9 @@
 """File tree building, file reading, and filesystem watching."""
 
 import base64
+import contextvars
 import mimetypes
+import re
 import shutil
 from pathlib import Path
 from typing import AsyncGenerator
@@ -9,6 +11,11 @@ from typing import AsyncGenerator
 from watchfiles import awatch, Change
 
 from ..file_utils import TEXT_EXTENSIONS
+
+
+_SESSION_CV: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "langstage_file_session_id", default=""
+)
 
 
 # Extensions → CodeMirror language modes
@@ -72,7 +79,17 @@ class FileManager:
     """Reads the workspace directory for the file browser UI."""
 
     def __init__(self, workspace: Path):
-        self.workspace = workspace.resolve()
+        self._base_workspace = workspace.resolve()
+
+    @property
+    def workspace(self) -> Path:
+        sid = _SESSION_CV.get("")
+        if sid:
+            safe = re.sub(r"[^a-zA-Z0-9._-]", "_", sid)[:64]
+            session_dir = self._base_workspace / safe
+            session_dir.mkdir(parents=True, exist_ok=True)
+            return session_dir
+        return self._base_workspace
 
     def get_tree(self, path: str = "/", depth: int = 1) -> dict:
         """Return directory listing with lazy loading support."""

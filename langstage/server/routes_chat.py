@@ -6,8 +6,12 @@ queue, cancellation, and SSE plumbing that used to live in cowork's own
 """
 
 import asyncio
+import json
 import logging
+import os
 from datetime import datetime, timezone
+from urllib import error as urllib_error, parse as urllib_parse
+from urllib import request as urllib_request
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -22,6 +26,95 @@ from langstage_core.adapters import SessionAdapter
 from langstage.workspace.file_manager import FileManager
 
 logger = logging.getLogger(__name__)
+
+
+def _history_api_base() -> str:
+    return os.getenv(
+        "SKILLS_HUB_API_BASE_URL",
+        os.getenv("ARLIE_BASE_URL", "https://cvchatapp.commvault.com/api/v1"),
+    ).rstrip("/")
+
+
+def _history_headers() -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    api_key = os.getenv("ARLIE_API_KEY", "")
+    if api_key:
+        headers["x-api-key"] = api_key
+    return headers
+
+
+def _history_url(session_id: str) -> str:
+    sid = urllib_parse.quote(session_id, safe="")
+    return f"{_history_api_base()}/skills-hub/playground/history/{sid}"
+
+
+def _history_api_fetch(session_id: str) -> list[dict]:
+    req = urllib_request.Request(
+        url=_history_url(session_id),
+        method="GET",
+        headers=_history_headers(),
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=8) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+            messages = payload.get("messages", [])
+            return messages if isinstance(messages, list) else []
+    except (urllib_error.HTTPError, urllib_error.URLError, TimeoutError, ValueError) as exc:
+        logger.warning("history fetch failed for %s: %s", session_id, exc)
+    return []
+
+
+def _history_api_append(session_id: str, role: str, content: str) -> None:
+    if not session_id or not role or not content:
+        return
+    body = json.dumps(
+        {"session_id": session_id, "role": role, "content": content}
+    ).encode("utf-8")
+    req = urllib_request.Request(
+        url=f"{_history_api_base()}/skills-hub/playground/history",
+        method="POST",
+        data=body,
+        headers=_history_headers(),
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=10):
+            pass
+    except (urllib_error.HTTPError, urllib_error.URLError, TimeoutError):
+        # Do not block the chat turn on history persistence failures.
+        return
+
+
+def _parse_sse_data(frame: str) -> dict:
+    if not isinstance(frame, str):
+        return {}
+    data_lines: list[str] = []
+    for line in frame.splitlines():
+        if line.startswith("data:"):
+            data_lines.append(line[5:].lstrip())
+    if not data_lines:
+        return {}
+    payload = "\n".join(data_lines)
+    try:
+        parsed = json.loads(payload)
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _set_playground_session_cv(session_id: str) -> None:
+    if not session_id:
+        return
+    try:
+        import sys
+
+        if "/opt/skill-hub-playground" not in sys.path:
+            sys.path.insert(0, "/opt/skill-hub-playground")
+        from _session_ctx import PLAYGROUND_SESSION_CV
+
+        PLAYGROUND_SESSION_CV.set(session_id)
+    except Exception:
+        # Optional integration point; do not fail chat if unavailable.
+        return
 
 
 class ChatRequest(BaseModel):
@@ -90,16 +183,49 @@ def create_chat_router(
         one stream via the session's queue.
         """
         session = adapter.get_or_create(session_id)
+        history_key = request.query_params.get("playground_session_id") or session.id
+        session.history_key = history_key
+        skill_key = request.query_params.get("playground_skill_name") or request.query_params.get("skillName") or ""
+        if skill_key:
+            session.skill_name = skill_key
+
+        if history_key and not getattr(session, "history_loaded", False):
+            session.history_loaded = True
+            history_messages = await asyncio.to_thread(_history_api_fetch, history_key)
+            if history_messages:
+                for message in history_messages:
+                    role = (message.get("role") or "").lower()
+                    content = message.get("content") or ""
+                    if role not in {"user", "assistant"} or not content:
+                        continue
+                    if role == "user":
+                        session.push({"type": "user_message", "content": content})
+                    else:
+                        session.push({"type": "content", "content": content, "role": "assistant"})
+                        session.push({"type": "complete"})
 
         async def event_generator():
             # File watcher pushes file_changed events into the same session queue.
             file_watch_task = None
+            assistant_parts: list[str] = []
             if file_manager:
                 file_watch_task = asyncio.create_task(
                     _push_file_changes(adapter, session.id, file_manager)
                 )
             try:
                 async for frame in adapter.sse(session.id):
+                    event_data = _parse_sse_data(frame)
+                    kind = event_data.get("type")
+                    if kind == "content":
+                        role = (event_data.get("role") or "assistant").lower()
+                        if role == "assistant":
+                            assistant_parts.append(event_data.get("content") or "")
+                    elif kind == "complete":
+                        if assistant_parts:
+                            _history_api_append(history_key, "assistant", "".join(assistant_parts))
+                            assistant_parts = []
+                    elif kind == "error":
+                        assistant_parts = []
                     yield frame
             finally:
                 if file_watch_task:
@@ -118,10 +244,21 @@ def create_chat_router(
     @router.post("/chat", response_model=SessionAck, response_model_exclude_unset=True)
     async def send_message(body: ChatRequest):
         """Send a user message and start agent streaming."""
-        if adapter.get(body.session_id) is None:
+        session = adapter.get(body.session_id)
+        if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
+        history_key = getattr(session, "history_key", body.session_id)
+        skill_name = (getattr(session, "skill_name", "") or "").strip()
+
+        user_content = body.content
+        message_to_send = user_content
+        if skill_name and not user_content.lstrip().startswith("/"):
+            message_to_send = f"/{skill_name}\n\n{user_content}"
+
+        _history_api_append(history_key, "user", user_content)
+        _set_playground_session_cv(history_key)
         adapter.submit_message(
-            body.session_id, body.content, context_parts=context_parts(body.cwd)
+            body.session_id, message_to_send, context_parts=context_parts(body.cwd)
         )
         return {"status": "ok", "session_id": body.session_id}
 
@@ -170,8 +307,10 @@ def create_chat_router(
     @router.post("/chat/interrupt", response_model=SessionAck, response_model_exclude_unset=True)
     async def respond_to_interrupt(body: InterruptRequest):
         """Resume the agent from an interrupt with user decisions."""
-        if adapter.get(body.session_id) is None:
+        session = adapter.get(body.session_id)
+        if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
+        _set_playground_session_cv(getattr(session, "history_key", body.session_id))
         adapter.submit_decisions(body.session_id, body.decisions)
         return {"status": "ok", "session_id": body.session_id}
 
