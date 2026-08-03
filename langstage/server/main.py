@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
 
@@ -249,7 +249,7 @@ def create_fastapi_app(
         )
 
     @app.get("/api/session-status")
-    async def session_status(request):
+    async def session_status(request: Request):
         import asyncio
         import json
         import os

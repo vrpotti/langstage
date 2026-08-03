@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
-import { FolderTree, Palette, ListTodo, AlarmClock, KanbanSquare, PanelRightClose, PanelRightOpen, Sparkles } from "lucide-react";
+import { FolderTree, PanelRightClose, PanelRightOpen, Sparkles } from "lucide-react";
 import type {
   ChatMessage,
   TodoItem,
@@ -20,48 +20,9 @@ import type {
 import { ChatPanel } from "./ChatPanel";
 import { FileBrowser } from "./FileBrowser";
 import { FileViewer } from "./FileViewer";
-import { CanvasPanel } from "./CanvasPanel";
-import { SchedulesPanel } from "./SchedulesPanel";
-import { TaskBoard } from "./TaskBoard";
-import { TodoPanel } from "./TodoPanel";
 import { InterruptDialog } from "./InterruptDialog";
 import { ThemeToggle } from "./ThemeToggle";
 import { StatusBar } from "./StatusBar";
-
-type RightTab = "files" | "canvas" | "tasks" | "board" | "schedules";
-
-function TabButton({
-  active,
-  onClick,
-  icon: Icon,
-  label,
-  count,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: typeof FolderTree;
-  label: string;
-  count?: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1.5 flex-shrink-0 px-2.5 h-7 rounded-md text-[13px] font-medium whitespace-nowrap transition-colors ${
-        active
-          ? "bg-[var(--color-surface-3)] text-[var(--color-text)]"
-          : "text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-3)]"
-      }`}
-    >
-      <Icon size={14} />
-      {label}
-      {count != null && count > 0 && (
-        <span className="min-w-[16px] h-4 px-1 rounded-full bg-[var(--color-card)] border border-[var(--color-border)] text-[10px] tabular-nums text-[var(--color-text-muted)] inline-flex items-center justify-center">
-          {count}
-        </span>
-      )}
-    </button>
-  );
-}
 
 interface LayoutProps {
   config: AppConfig;
@@ -103,17 +64,9 @@ interface LayoutProps {
 }
 
 export function Layout(props: LayoutProps) {
-  const [activeTab, setActiveTab] = useState<RightTab>("tasks");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const showCanvas = props.config.show_canvas;
   const showFiles = props.config.show_files;
-
-  // If the currently active tab gets hidden by config, fall back to Plan.
-  useEffect(() => {
-    if (activeTab === "canvas" && !showCanvas) setActiveTab("tasks");
-    else if (activeTab === "files" && !showFiles) setActiveTab("tasks");
-  }, [activeTab, showCanvas, showFiles]);
 
   return (
     <div className="h-full flex flex-col bg-[var(--color-surface)]">
@@ -179,68 +132,19 @@ export function Layout(props: LayoutProps) {
               createWorkflowPrompt={props.config.create_workflow_prompt}
               onSend={props.onSend}
               onCancel={props.onCancel}
+              onUpload={props.onUpload}
             />
           </Allotment.Pane>
 
           <Allotment.Pane minSize={250} visible={sidebarOpen}>
             <div data-print-hide className="flex flex-col h-full bg-[var(--color-panel)]">
-              {/* Tab bar — scrollable pills so it degrades gracefully when narrow */}
-              <div className="flex items-center gap-1 px-2 h-11 border-b border-[var(--color-border)] overflow-x-auto">
-                <TabButton
-                  active={activeTab === "tasks"}
-                  onClick={() => setActiveTab("tasks")}
-                  icon={ListTodo}
-                  label="Plan"
-                  count={props.todos.length}
-                />
-                {showCanvas && (
-                  <TabButton
-                    active={activeTab === "canvas"}
-                    onClick={() => setActiveTab("canvas")}
-                    icon={Palette}
-                    label="Canvas"
-                    count={props.canvasItems.length}
-                  />
-                )}
-                {showFiles && (
-                  <TabButton
-                    active={activeTab === "files"}
-                    onClick={() => setActiveTab("files")}
-                    icon={FolderTree}
-                    label="Files"
-                  />
-                )}
-                <TabButton
-                  active={activeTab === "schedules"}
-                  onClick={() => setActiveTab("schedules")}
-                  icon={AlarmClock}
-                  label="Schedules"
-                  count={props.cronJobs.length}
-                />
-                <TabButton
-                  active={activeTab === "board"}
-                  onClick={() => setActiveTab("board")}
-                  icon={KanbanSquare}
-                  label="Board"
-                  count={props.tasks.filter(
-                    (t) => t.state === "queued" || t.state === "ongoing" || t.state === "review_needed"
-                  ).length}
-                />
+              <div className="flex items-center gap-1.5 px-3 h-11 border-b border-[var(--color-border)]">
+                <FolderTree size={14} className="text-[var(--color-text-secondary)]" />
+                <span className="text-[13px] font-medium text-[var(--color-text)]">Files</span>
               </div>
 
               <div className="flex-1 overflow-hidden">
-                {activeTab === "tasks" && (
-                  <TodoPanel todos={props.todos} />
-                )}
-                {activeTab === "canvas" && showCanvas && (
-                  <CanvasPanel
-                    items={props.canvasItems}
-                    onDelete={props.onDeleteCanvasItem}
-                    onClearAll={props.onClearCanvas}
-                    onExport={props.onExportCanvas}
-                  />
-                )}
-                {activeTab === "files" && showFiles && (
+                {showFiles && (
                   props.selectedFile ? (
                     <FileViewer
                       file={props.selectedFile}
@@ -260,22 +164,6 @@ export function Layout(props: LayoutProps) {
                       onDelete={props.onDeletePath}
                     />
                   )
-                )}
-                {activeTab === "board" && (
-                  <TaskBoard
-                    tasks={props.tasks}
-                    onCreate={props.onCreateTask}
-                    onCancel={props.onCancelTask}
-                    onRetry={props.onRetryTask}
-                  />
-                )}
-                {activeTab === "schedules" && (
-                  <SchedulesPanel
-                    jobs={props.cronJobs}
-                    onCreate={props.onCreateCron}
-                    onDelete={props.onDeleteCron}
-                    onRun={props.onRunCron}
-                  />
                 )}
               </div>
             </div>

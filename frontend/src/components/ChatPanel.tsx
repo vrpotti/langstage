@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowUp, Square, Loader2, Sparkles } from "lucide-react";
+import { ArrowUp, Paperclip, Square, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "../types";
@@ -27,6 +27,7 @@ interface ChatPanelProps {
   createWorkflowPrompt?: string;
   onSend: (content: string) => void;
   onCancel: () => void;
+  onUpload: (file: File) => void;
 }
 
 export function ChatPanel({
@@ -40,10 +41,12 @@ export function ChatPanel({
   createWorkflowPrompt,
   onSend,
   onCancel,
+  onUpload,
 }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const uploadRef = useRef<HTMLInputElement>(null);
   const isNearBottomRef = useRef(true);
   const slashCommands = useSlashCommands({ saveWorkflowPrompt, runWorkflowPrompt, createWorkflowPrompt });
 
@@ -114,6 +117,15 @@ export function ChatPanel({
     const el = e.target;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  };
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    for (let i = 0; i < files.length; i++) {
+      onUpload(files[i]);
+    }
+    e.target.value = "";
   };
 
   return (
@@ -208,6 +220,21 @@ export function ChatPanel({
             onHover={slashCommands.setSelectedIndex}
           />
           <div className="flex items-end gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-xs px-3 py-2 transition-colors focus-within:border-[var(--color-primary)] focus-within:ring-1 focus-within:ring-[var(--color-primary)]">
+            <button
+              onClick={() => uploadRef.current?.click()}
+              className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--color-surface-3)] transition-colors"
+              title="Upload file"
+              aria-label="Upload file"
+            >
+              <Paperclip size={14} className="text-[var(--color-text-secondary)]" />
+            </button>
+            <input
+              ref={uploadRef}
+              type="file"
+              multiple
+              onChange={handleUpload}
+              className="hidden"
+            />
             <textarea
               ref={inputRef}
               value={input}
