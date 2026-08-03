@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -142,6 +143,16 @@ def create_fastapi_app(
     async def _session_file_middleware(request, call_next):
         path = request.url.path or ""
         sid = request.query_params.get("session_id", "")
+        if not sid:
+            # Fallback for clients that omit session_id on file endpoints:
+            # derive from the page URL query (sessionId) carried in Referer.
+            referer = request.headers.get("referer", "")
+            if referer:
+                try:
+                    qs = parse_qs(urlparse(referer).query)
+                    sid = (qs.get("sessionId") or [""])[0]
+                except Exception:
+                    sid = ""
         if (path == "/api/files" or path.startswith("/api/files/")) and not sid:
             return JSONResponse({"detail": "missing session_id for file request"}, status_code=400)
         token = _SESSION_CV.set(sid)

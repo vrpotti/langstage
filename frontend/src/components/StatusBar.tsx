@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Loader2, Printer, RotateCcw, Zap } from "lucide-react";
+import { Loader2, Zap } from "lucide-react";
 import type { ConnectionStatus, TokenUsage, TurnUsage } from "../types";
 import { TokenUsageChart } from "./TokenUsageChart";
 
@@ -24,6 +24,8 @@ export function StatusBar({
   usageHistory,
   onNewSession,
 }: StatusBarProps) {
+  void connectionStatus;
+  void onNewSession;
   const [showChart, setShowChart] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -48,27 +50,6 @@ export function StatusBar({
 
   return (
     <div className="flex items-center gap-2.5 text-[11px]">
-      <button
-        onClick={() => {
-          if (window.confirm("Start a new session? This will clear all messages and cannot be undone.")) {
-            onNewSession();
-          }
-        }}
-        disabled={isStreaming}
-        className="flex items-center gap-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-        title="New session"
-      >
-        <RotateCcw size={10} />
-        New
-      </button>
-      <button
-        onClick={() => window.print()}
-        className="flex items-center gap-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer"
-        title="Print conversation"
-      >
-        <Printer size={10} />
-        Print
-      </button>
       {isStreaming && (
         <span className="flex items-center gap-1 text-[var(--color-text-secondary)]">
           <Loader2 size={10} className="animate-spin" />
@@ -96,26 +77,6 @@ export function StatusBar({
           )}
         </div>
       )}
-      <span className="flex items-center gap-1.5">
-        <span
-          className={`w-1.5 h-1.5 rounded-full ${
-            connectionStatus === "connected"
-              ? "bg-[var(--color-success)]"
-              : connectionStatus === "error"
-                ? "bg-[var(--color-error)]"
-                : "bg-[var(--color-text-muted)]"
-          }`}
-        />
-        <span className="text-[var(--color-text-muted)]">
-          {connectionStatus === "connected"
-            ? "Connected"
-            : connectionStatus === "connecting"
-              ? "Connecting"
-              : connectionStatus === "error"
-                ? "Error"
-                : "Disconnected"}
-        </span>
-      </span>
     </div>
   );
 }
