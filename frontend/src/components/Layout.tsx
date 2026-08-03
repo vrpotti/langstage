@@ -64,7 +64,7 @@ interface LayoutProps {
 }
 
 export function Layout(props: LayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const showFiles = props.config.show_files;
 
