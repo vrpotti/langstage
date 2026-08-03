@@ -183,7 +183,12 @@ def create_chat_router(
         one stream via the session's queue.
         """
         session = adapter.get_or_create(session_id)
-        history_key = request.query_params.get("playground_session_id") or session.id
+        # Keep file sandbox scoped to the playground session from the URL, but
+        # keep conversation history scoped to each LangStage chat session so a
+        # user-created "New chat" starts clean.
+        file_session_id = request.query_params.get("playground_session_id") or session.id
+        history_key = request.query_params.get("playground_history_id") or session.id
+        session.file_session_id = file_session_id
         session.history_key = history_key
         skill_key = request.query_params.get("playground_skill_name") or request.query_params.get("skillName") or ""
         if skill_key:
@@ -248,6 +253,7 @@ def create_chat_router(
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
         history_key = getattr(session, "history_key", body.session_id)
+        file_session_id = getattr(session, "file_session_id", body.session_id)
         skill_name = (getattr(session, "skill_name", "") or "").strip()
 
         user_content = body.content
@@ -256,7 +262,7 @@ def create_chat_router(
             message_to_send = f"/{skill_name}\n\n{user_content}"
 
         _history_api_append(history_key, "user", user_content)
-        _set_playground_session_cv(history_key)
+        _set_playground_session_cv(file_session_id)
         adapter.submit_message(
             body.session_id, message_to_send, context_parts=context_parts(body.cwd)
         )
@@ -310,7 +316,7 @@ def create_chat_router(
         session = adapter.get(body.session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
-        _set_playground_session_cv(getattr(session, "history_key", body.session_id))
+        _set_playground_session_cv(getattr(session, "file_session_id", body.session_id))
         adapter.submit_decisions(body.session_id, body.decisions)
         return {"status": "ok", "session_id": body.session_id}
 
