@@ -139,10 +139,104 @@ def create_fastapi_app(
         auth_password=config.auth_password,
     )
 
+    def _extract_authentik_info(request: Request) -> tuple[dict, set[str], dict]:
+        email = (
+            request.headers.get("x-authentik-email", "")
+            or request.headers.get("x-forwarded-email", "")
+            or request.headers.get("x-auth-request-email", "")
+            or request.headers.get("x-authentik-preferred-username", "")
+        ).strip().lower()
+        username = (request.headers.get("x-authentik-username", "") or "").strip().lower()
+        name = (request.headers.get("x-authentik-name", "") or "").strip()
+        uid = (request.headers.get("x-authentik-uid", "") or "").strip().lower()
+        groups = (request.headers.get("x-authentik-groups", "") or "").strip()
+
+        info = {
+            "email": email,
+            "username": username,
+            "name": name,
+            "uid": uid,
+            "groups": groups,
+        }
+        identity_candidates = {v for v in (email, username, uid) if v}
+        raw_headers = {
+            k: v
+            for k, v in request.headers.items()
+            if k.startswith("x-authentik-") or k.startswith("x-auth-request-") or k == "x-forwarded-email"
+        }
+        return info, identity_candidates, raw_headers
+
+    async def _fetch_playground_session(session_id: str) -> tuple[dict | None, int]:
+        import asyncio
+        import json
+        import os
+        from urllib import error as url_error, parse as url_parse
+        from urllib import request as url_request
+
+        api_base = os.getenv(
+            "SKILLS_HUB_API_BASE_URL",
+            os.getenv("ARLIE_BASE_URL", "https://cvchatapp.commvault.com/api/v1"),
+        ).rstrip("/")
+        api_key = os.getenv("ARLIE_API_KEY", "")
+        sid = url_parse.quote(session_id, safe="")
+        url = f"{api_base}/skills-hub/playground/session/{sid}"
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["x-api-key"] = api_key
+
+        def _do_request():
+            req = url_request.Request(url=url, method="GET", headers=headers)
+            try:
+                with url_request.urlopen(req, timeout=8) as resp:
+                    return json.loads(resp.read().decode("utf-8")), resp.status
+            except url_error.HTTPError as exc:
+                return None, exc.code
+            except Exception:
+                return None, 0
+
+        return await asyncio.to_thread(_do_request)
+
+    def _is_session_expired(data: dict, http_status: int) -> tuple[bool, str, str]:
+        from datetime import datetime, timezone
+
+        owner_id = (
+            data.get("owner_id")
+            or data.get("ownerId")
+            or data.get("owner_email")
+            or data.get("ownerEmail")
+            or ""
+        ).strip().lower()
+        status = str(data.get("status", "") or "").strip().lower()
+        expires_at = (data.get("expires_at") or data.get("expiresAt") or "").strip()
+
+        expired = http_status == 410 or status in ("expired", "closed")
+        if not expired and expires_at:
+            try:
+                normalized_expires_at = expires_at.replace("Z", "+00:00")
+                exp = datetime.fromisoformat(normalized_expires_at)
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+                expired = datetime.now(timezone.utc) >= exp
+            except ValueError:
+                pass
+
+        return expired, owner_id, status
+
+    async def _authorize_session_request(request: Request, session_id: str) -> tuple[bool, bool, str, str, dict, dict]:
+        authentik_info, identity_candidates, raw_headers = _extract_authentik_info(request)
+        data, http_status = await _fetch_playground_session(session_id)
+        if data is None or http_status not in (200, 410):
+            return False, False, "", "", authentik_info, raw_headers
+
+        expired, owner_id, status = _is_session_expired(data, http_status)
+        authorized_owner = bool(identity_candidates) and bool(owner_id) and owner_id in identity_candidates
+        authorized = authorized_owner and not expired
+        return authorized, expired, owner_id, status, authentik_info, raw_headers
+
     @app.middleware("http")
     async def _session_file_middleware(request, call_next):
         path = request.url.path or ""
-        sid = request.query_params.get("session_id", "")
+        sid = request.query_params.get("session_id", "") or request.query_params.get("playground_session_id", "")
         if not sid:
             # Fallback for clients that omit session_id on file endpoints:
             # derive from the page URL query (sessionId) carried in Referer.
@@ -153,8 +247,21 @@ def create_fastapi_app(
                     sid = (qs.get("sessionId") or [""])[0]
                 except Exception:
                     sid = ""
+
+        is_files_api = path == "/api/files" or path.startswith("/api/files/")
+        is_stream_api = path == "/api/stream" or path.startswith("/api/stream/")
+        is_chat_api = path == "/api/chat" or path.startswith("/api/chat/")
+        needs_owner_guard = is_files_api or is_stream_api or is_chat_api
+
         if (path == "/api/files" or path.startswith("/api/files/")) and not sid:
             return JSONResponse({"detail": "missing session_id for file request"}, status_code=400)
+
+        if needs_owner_guard and sid:
+            authorized, expired, owner_id, _, _, _ = await _authorize_session_request(request, sid)
+            if not authorized:
+                detail = "session_expired" if expired else "session_forbidden"
+                return JSONResponse({"detail": detail, "owner_id": owner_id}, status_code=403)
+
         token = _SESSION_CV.set(sid)
         try:
             return await call_next(request)
@@ -272,32 +379,8 @@ def create_fastapi_app(
 
     @app.get("/api/session-status")
     async def session_status(request: Request):
-        import asyncio
-        import json
-        import os
-        from datetime import datetime, timezone
-        from urllib import error as url_error, parse as url_parse
-        from urllib import request as url_request
-
         session_id = request.query_params.get("session_id", "")
-        user_email = (
-            request.headers.get("x-authentik-email", "")
-            or request.headers.get("x-forwarded-email", "")
-            or request.headers.get("x-auth-request-email", "")
-            or request.headers.get("x-authentik-preferred-username", "")
-        ).strip().lower()
-        authentik_info = {
-            "email": user_email,
-            "username": (request.headers.get("x-authentik-username", "") or "").strip(),
-            "name": (request.headers.get("x-authentik-name", "") or "").strip(),
-            "uid": (request.headers.get("x-authentik-uid", "") or "").strip(),
-            "groups": (request.headers.get("x-authentik-groups", "") or "").strip(),
-        }
-        authentik_raw_headers = {
-            k: v
-            for k, v in request.headers.items()
-            if k.startswith("x-authentik-") or k.startswith("x-auth-request-") or k == "x-forwarded-email"
-        }
+        authentik_info, _, authentik_raw_headers = _extract_authentik_info(request)
 
         if not session_id:
             return JSONResponse(
@@ -311,28 +394,7 @@ def create_fastapi_app(
                 status_code=400,
             )
 
-        api_base = os.getenv(
-            "SKILLS_HUB_API_BASE_URL",
-            os.getenv("ARLIE_BASE_URL", "https://cvchatapp.commvault.com/api/v1"),
-        ).rstrip("/")
-        api_key = os.getenv("ARLIE_API_KEY", "")
-        sid = url_parse.quote(session_id, safe="")
-        url = f"{api_base}/skills-hub/playground/session/{sid}"
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["x-api-key"] = api_key
-
-        def _fetch_session():
-            req = url_request.Request(url=url, method="GET", headers=headers)
-            try:
-                with url_request.urlopen(req, timeout=8) as resp:
-                    return json.loads(resp.read().decode("utf-8")), resp.status
-            except url_error.HTTPError as exc:
-                return None, exc.code
-            except Exception:
-                return None, 0
-
-        data, http_status = await asyncio.to_thread(_fetch_session)
+        data, http_status = await _fetch_playground_session(session_id)
         if data is None or http_status == 404:
             return JSONResponse(
                 {
@@ -356,23 +418,19 @@ def create_fastapi_app(
                 status_code=200,
             )
 
-        owner_id = (data.get("owner_id") or data.get("ownerId") or "").strip().lower()
-        status = str(data.get("status", "") or "").strip().lower()
-        expires_at = (data.get("expires_at") or data.get("expiresAt") or "").strip()
-
-        expired = http_status == 410 or status in ("expired", "closed")
-        if not expired and expires_at:
-            try:
-                normalized_expires_at = expires_at.replace("Z", "+00:00")
-                exp = datetime.fromisoformat(normalized_expires_at)
-                if exp.tzinfo is None:
-                    exp = exp.replace(tzinfo=timezone.utc)
-                expired = datetime.now(timezone.utc) >= exp
-            except ValueError:
-                pass
-
-        authorized_owner = bool(user_email) and bool(owner_id) and owner_id == user_email
+        expired, owner_id, status = _is_session_expired(data, http_status)
+        identity_candidates = {
+            v
+            for v in (
+                (authentik_info.get("email") or "").strip().lower(),
+                (authentik_info.get("username") or "").strip().lower(),
+                (authentik_info.get("uid") or "").strip().lower(),
+            )
+            if v
+        }
+        authorized_owner = bool(identity_candidates) and bool(owner_id) and owner_id in identity_candidates
         authorized = authorized_owner and not expired
+        expires_at = (data.get("expires_at") or data.get("expiresAt") or "").strip()
 
         return JSONResponse(
             {

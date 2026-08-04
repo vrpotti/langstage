@@ -8,13 +8,13 @@ import { Layout } from "./components/Layout";
 import type { AppConfig } from "./types";
 
 const DEFAULT_CONFIG: AppConfig = {
-  title: "LangStage",
+  title: "Arlie Skill Hub Playground",
   subtitle: "",
   welcome_message: "",
   theme: "auto",
   workspace_name: "",
-  agent_name: "Agent",
-  icon_url: "",
+  agent_name: "Arlie",
+  icon_url: "/branding/arlie_logo.svg",
   save_workflow_prompt: "",
   run_workflow_prompt: "",
   create_workflow_prompt: "",
@@ -32,7 +32,13 @@ export default function App() {
     fetch("/api/config")
       .then((res) => res.json())
       .then((data) => {
-        setConfig(data);
+        setConfig({
+          ...DEFAULT_CONFIG,
+          ...data,
+          title: data?.title || DEFAULT_CONFIG.title,
+          agent_name: data?.agent_name || DEFAULT_CONFIG.agent_name,
+          icon_url: data?.icon_url || DEFAULT_CONFIG.icon_url,
+        });
         setConfigLoaded(true);
       })
       .catch(() => {

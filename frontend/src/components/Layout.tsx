@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
-import { FolderTree, PanelRightClose, PanelRightOpen, Sparkles, UserCircle2 } from "lucide-react";
+import { FolderTree, PanelRightClose, PanelRightOpen, UserCircle2 } from "lucide-react";
 import type {
   ChatMessage,
   TodoItem,
@@ -69,41 +69,52 @@ export function Layout(props: LayoutProps) {
 
   const showFiles = props.config.show_files;
   const email = props.userEmail || "";
+  const brandIcon = props.config.icon_url || "/branding/arlie_logo.svg";
 
   return (
     <div className="h-full flex flex-col bg-[var(--color-surface)]">
       {/* Header */}
       <header data-print-hide className="flex items-center justify-between px-5 h-11 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="flex items-center gap-2.5">
-          {props.config.icon_url ? (
-            <img
-              src={props.config.icon_url}
-              alt=""
-              className="w-6 h-6 rounded-md object-cover"
-            />
-          ) : (
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-dark)] flex items-center justify-center">
-              <Sparkles size={13} className="text-white" />
-            </div>
-          )}
+          <img
+            src={brandIcon}
+            alt="Arlie"
+            className="w-6 h-6 rounded-md object-cover"
+          />
           <h1 className="text-sm font-semibold tracking-tight text-[var(--color-text)]">
             {props.config.title}
           </h1>
           <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-card)] px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-[var(--color-text-secondary)]">
             ARLIE
           </span>
+          <img
+            src="/branding/cv-logo-dark.svg"
+            alt="Commvault"
+                <div className="flex items-center gap-3 min-w-0">
+          />
           {props.config.subtitle && (
             <span className="text-[11px] text-[var(--color-text-muted)] hidden sm:inline border-l border-[var(--color-border)] pl-2.5">
               {props.config.subtitle}
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {email && (
-            <span
-              className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)] bg-[var(--color-card)] border border-[var(--color-border)] rounded-full px-2.5 py-0.5 max-w-[200px] truncate"
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-semibold tracking-tight text-[var(--color-text)] whitespace-nowrap">
+                      Arlie
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-card)] px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-[var(--color-text-secondary)] whitespace-nowrap">
+                      SKILL HUB
+                    </span>
+                    <img
+                      src="/branding/cv-logo-dark.svg"
+                      alt="Commvault"
+                      className="hidden lg:block h-4 w-auto opacity-85"
+                    />
+                  </div>
+                  <div className="hidden md:block h-4 w-px bg-[var(--color-border)]" />
+                  <h1 className="text-[12px] font-medium tracking-tight text-[var(--color-text-secondary)] truncate max-w-[280px]">
+                    {props.config.title}
+                  </h1>
               title={email}
-            >
+                    <span className="text-[11px] text-[var(--color-text-muted)] hidden xl:inline border-l border-[var(--color-border)] pl-2">
               <UserCircle2 size={12} className="shrink-0 text-[var(--color-text-secondary)]" />
               {email}
             </span>

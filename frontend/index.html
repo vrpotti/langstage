@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" href="/branding/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Arlie Skill Hub Playground</title>
   </head>
@@ -162,16 +162,6 @@
                 return r.json();
               })
               .then(function (d) {
-                try {
-                  console.info("[arlie] session-status", d);
-                  if (d && d.authentik) {
-                    console.info("[arlie] authentik headers", d.authentik);
-                  }
-                  if (d && d.authentik_raw_headers) {
-                    console.info("[arlie] authentik raw headers", d.authentik_raw_headers);
-                  }
-                } catch (_e) {}
-
                 if (d.expired) {
                   _sessionAuthorized = false;
                   _showBlock("Session expired. Please start a new playground session.", "rgba(30,30,40,0.95)");
