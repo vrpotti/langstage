@@ -271,6 +271,11 @@ def create_fastapi_app(
             "uid": (request.headers.get("x-authentik-uid", "") or "").strip(),
             "groups": (request.headers.get("x-authentik-groups", "") or "").strip(),
         }
+        authentik_raw_headers = {
+            k: v
+            for k, v in request.headers.items()
+            if k.startswith("x-authentik-") or k.startswith("x-auth-request-") or k == "x-forwarded-email"
+        }
 
         if not session_id:
             return JSONResponse(
@@ -279,6 +284,7 @@ def create_fastapi_app(
                     "expired": False,
                     "error": "missing_session_id",
                     "authentik": authentik_info,
+                    "authentik_raw_headers": authentik_raw_headers,
                 },
                 status_code=400,
             )
@@ -312,6 +318,7 @@ def create_fastapi_app(
                     "expired": False,
                     "error": "session_not_found",
                     "authentik": authentik_info,
+                    "authentik_raw_headers": authentik_raw_headers,
                 },
                 status_code=200,
             )
@@ -322,6 +329,7 @@ def create_fastapi_app(
                     "expired": False,
                     "error": "upstream_error",
                     "authentik": authentik_info,
+                    "authentik_raw_headers": authentik_raw_headers,
                 },
                 status_code=200,
             )
@@ -353,6 +361,7 @@ def create_fastapi_app(
                 "owner_id": owner_id,
                 "session_status": status,
                 "authentik": authentik_info,
+                "authentik_raw_headers": authentik_raw_headers,
             }
         )
 

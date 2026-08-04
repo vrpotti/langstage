@@ -167,6 +167,9 @@
                   if (d && d.authentik) {
                     console.info("[arlie] authentik headers", d.authentik);
                   }
+                  if (d && d.authentik_raw_headers) {
+                    console.info("[arlie] authentik raw headers", d.authentik_raw_headers);
+                  }
                 } catch (_e) {}
 
                 if (d.expired) {
