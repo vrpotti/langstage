@@ -1,24 +1,19 @@
 import { useRef, useEffect } from "react";
-import { FileText, Terminal, Loader2 } from "lucide-react";
-import type { SlashCommandDefinition } from "../hooks/useSlashCommands";
+import { Sparkles, Loader2 } from "lucide-react";
 
 interface SlashCommandMenuProps {
-  showCommandMenu: boolean;
-  filteredCommands: SlashCommandDefinition[];
-  showWorkflowPicker: boolean;
-  filteredWorkflowFiles: string[];
-  isLoadingWorkflows: boolean;
+  showSkillsMenu: boolean;
+  filteredSkills: string[];
+  isLoadingSkills: boolean;
   selectedIndex: number;
   onSelect: (index: number) => void;
   onHover: (index: number) => void;
 }
 
 export function SlashCommandMenu({
-  showCommandMenu,
-  filteredCommands,
-  showWorkflowPicker,
-  filteredWorkflowFiles,
-  isLoadingWorkflows,
+  showSkillsMenu,
+  filteredSkills,
+  isLoadingSkills,
   selectedIndex,
   onSelect,
   onHover,
@@ -29,81 +24,48 @@ export function SlashCommandMenu({
     selectedRef.current?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
-  if (!showCommandMenu && !showWorkflowPicker) return null;
+  if (!showSkillsMenu) return null;
 
   return (
     <div className="absolute bottom-full left-0 right-0 mb-2 z-10">
       <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg shadow-md overflow-hidden max-h-[200px] overflow-y-auto">
-        {showCommandMenu && (
-          <div className="py-1">
-            {filteredCommands.map((cmd, i) => (
+        <div className="py-1">
+          <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
+            Skills
+          </div>
+          {isLoadingSkills ? (
+            <div className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-muted)]">
+              <Loader2 size={12} className="animate-spin" />
+              Loading skills...
+            </div>
+          ) : filteredSkills.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-[var(--color-text-muted)] italic">
+              No skills found.
+            </div>
+          ) : (
+            filteredSkills.map((skill, i) => (
               <button
-                key={cmd.name}
+                key={skill}
                 ref={i === selectedIndex ? selectedRef : undefined}
                 onClick={() => onSelect(i)}
                 onMouseEnter={() => onHover(i)}
-                className={`w-full text-left px-3 py-2 flex items-start gap-2.5 transition-colors ${
+                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 transition-colors ${
                   i === selectedIndex
                     ? "bg-[var(--color-surface-3)]"
                     : "hover:bg-[var(--color-surface-3)]"
                 }`}
               >
-                <Terminal
+                <Sparkles
                   size={14}
-                  className="text-[var(--color-text-muted)] mt-0.5 flex-shrink-0"
+                  className="text-[var(--color-text-secondary)] flex-shrink-0"
                 />
-                <div>
-                  <div className="text-sm font-medium text-[var(--color-text)]">
-                    {cmd.label}
-                  </div>
-                  <div className="text-xs text-[var(--color-text-muted)]">
-                    {cmd.description}
-                  </div>
-                </div>
+                <span className="text-sm text-[var(--color-text)] truncate">
+                  /{skill}
+                </span>
               </button>
-            ))}
-          </div>
-        )}
-
-        {showWorkflowPicker && (
-          <div className="py-1">
-            <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
-              Workflows
-            </div>
-            {isLoadingWorkflows ? (
-              <div className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-muted)]">
-                <Loader2 size={12} className="animate-spin" />
-                Loading workflows...
-              </div>
-            ) : filteredWorkflowFiles.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-[var(--color-text-muted)] italic">
-                No workflows found. Use /save-workflow to create one.
-              </div>
-            ) : (
-              filteredWorkflowFiles.map((file, i) => (
-                <button
-                  key={file}
-                  ref={i === selectedIndex ? selectedRef : undefined}
-                  onClick={() => onSelect(i)}
-                  onMouseEnter={() => onHover(i)}
-                  className={`w-full text-left px-3 py-1.5 flex items-center gap-2 transition-colors ${
-                    i === selectedIndex
-                      ? "bg-[var(--color-surface-3)]"
-                      : "hover:bg-[var(--color-surface-3)]"
-                  }`}
-                >
-                  <FileText
-                    size={14}
-                    className="text-[var(--color-text-secondary)] flex-shrink-0"
-                  />
-                  <span className="text-sm text-[var(--color-text)] truncate">
-                    {file}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        )}
+            ))
+          )}
+        </div>
       </div>
     </div>
   );

@@ -74,47 +74,27 @@ export function Layout(props: LayoutProps) {
   return (
     <div className="h-full flex flex-col bg-[var(--color-surface)]">
       {/* Header */}
-      <header data-print-hide className="flex items-center justify-between px-5 h-11 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
-        <div className="flex items-center gap-2.5">
-          <img
-            src={brandIcon}
-            alt="Arlie"
-            className="w-6 h-6 rounded-md object-cover"
-          />
-          <h1 className="text-sm font-semibold tracking-tight text-[var(--color-text)]">
-            {props.config.title}
-          </h1>
-          <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-card)] px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-[var(--color-text-secondary)]">
-            ARLIE
+      <header
+        data-print-hide
+        className="grid grid-cols-[1fr_auto_1fr] items-center px-5 h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)]"
+      >
+        <div className="flex items-center gap-2.5 justify-self-start min-w-0">
+          <img src={brandIcon} alt="Arlie" className="w-7 h-7 rounded-md object-cover" />
+          <span className="text-[20px] leading-none font-semibold tracking-tight text-[var(--color-text)] whitespace-nowrap">
+            Arlie
           </span>
-          <img
-            src="/branding/cv-logo-dark.svg"
-            alt="Commvault"
-                <div className="flex items-center gap-3 min-w-0">
-          />
-          {props.config.subtitle && (
-            <span className="text-[11px] text-[var(--color-text-muted)] hidden sm:inline border-l border-[var(--color-border)] pl-2.5">
-              {props.config.subtitle}
-            </span>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-semibold tracking-tight text-[var(--color-text)] whitespace-nowrap">
-                      Arlie
-                    </span>
-                    <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-card)] px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-[var(--color-text-secondary)] whitespace-nowrap">
-                      SKILL HUB
-                    </span>
-                    <img
-                      src="/branding/cv-logo-dark.svg"
-                      alt="Commvault"
-                      className="hidden lg:block h-4 w-auto opacity-85"
-                    />
-                  </div>
-                  <div className="hidden md:block h-4 w-px bg-[var(--color-border)]" />
-                  <h1 className="text-[12px] font-medium tracking-tight text-[var(--color-text-secondary)] truncate max-w-[280px]">
-                    {props.config.title}
-                  </h1>
+        </div>
+
+        <h1 className="text-sm md:text-base font-semibold tracking-[0.04em] text-[var(--color-text)] justify-self-center">
+          skills-hub-playground
+        </h1>
+
+        <div className="flex items-center gap-2 justify-self-end">
+          {email && (
+            <span
+              className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)] bg-[var(--color-card)] border border-[var(--color-border)] rounded-full px-2.5 py-0.5 max-w-[200px] truncate"
               title={email}
-                    <span className="text-[11px] text-[var(--color-text-muted)] hidden xl:inline border-l border-[var(--color-border)] pl-2">
+            >
               <UserCircle2 size={12} className="shrink-0 text-[var(--color-text-secondary)]" />
               {email}
             </span>
@@ -151,7 +131,7 @@ export function Layout(props: LayoutProps) {
               isStreaming={props.isStreaming}
               welcomeMessage={props.config.welcome_message}
               agentName={props.config.agent_name}
-              iconUrl={props.config.icon_url}
+              iconUrl={brandIcon}
               saveWorkflowPrompt={props.config.save_workflow_prompt}
               runWorkflowPrompt={props.config.run_workflow_prompt}
               createWorkflowPrompt={props.config.create_workflow_prompt}
@@ -171,10 +151,7 @@ export function Layout(props: LayoutProps) {
               <div className="flex-1 overflow-hidden">
                 {showFiles && (
                   props.selectedFile ? (
-                    <FileViewer
-                      file={props.selectedFile}
-                      onClose={props.onCloseFile}
-                    />
+                    <FileViewer file={props.selectedFile} onClose={props.onCloseFile} />
                   ) : (
                     <FileBrowser
                       entries={props.fileEntries}
@@ -197,10 +174,7 @@ export function Layout(props: LayoutProps) {
       </div>
 
       {props.interrupt && (
-        <InterruptDialog
-          interrupt={props.interrupt}
-          onRespond={props.onRespondInterrupt}
-        />
+        <InterruptDialog interrupt={props.interrupt} onRespond={props.onRespondInterrupt} />
       )}
     </div>
   );

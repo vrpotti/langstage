@@ -1,6 +1,7 @@
 """FastAPI application factory."""
 
 from contextlib import asynccontextmanager
+import os
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -376,6 +377,29 @@ def create_fastapi_app(
             "name": (request.headers.get("x-authentik-name", "") or "").strip(),
             "uid": (request.headers.get("x-authentik-uid", "") or "").strip(),
         })
+
+    @app.get("/api/skills")
+    async def skills_list():
+        """Return available skill folder names for slash-command autocomplete."""
+        skills_root = Path(os.getenv("PLAYGROUND_SKILLS_DIR", "/opt/skills-shared"))
+        if not skills_root.exists() or not skills_root.is_dir():
+            return JSONResponse({"skills": []})
+
+        skills: list[str] = []
+        try:
+            for entry in sorted(skills_root.iterdir(), key=lambda p: p.name.lower()):
+                if not entry.is_dir():
+                    continue
+                if entry.name.startswith("."):
+                    continue
+                skill_doc = entry / "SKILL.md"
+                if not skill_doc.exists():
+                    continue
+                skills.append(entry.name)
+        except OSError:
+            return JSONResponse({"skills": []})
+
+        return JSONResponse({"skills": skills})
 
     @app.get("/api/session-status")
     async def session_status(request: Request):

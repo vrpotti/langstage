@@ -210,11 +210,9 @@ export function ChatPanel({
       <div data-print-hide className="border-t border-[var(--color-border)]">
         <div className="max-w-4xl mx-auto px-5 py-3 relative">
           <SlashCommandMenu
-            showCommandMenu={slashCommands.showCommandMenu}
-            filteredCommands={slashCommands.filteredCommands}
-            showWorkflowPicker={slashCommands.showWorkflowPicker}
-            filteredWorkflowFiles={slashCommands.filteredWorkflowFiles}
-            isLoadingWorkflows={slashCommands.isLoadingWorkflows}
+            showSkillsMenu={slashCommands.showSkillsMenu}
+            filteredSkills={slashCommands.filteredSkills}
+            isLoadingSkills={slashCommands.isLoadingSkills}
             selectedIndex={slashCommands.selectedIndex}
             onSelect={handleSlashSelect}
             onHover={slashCommands.setSelectedIndex}
