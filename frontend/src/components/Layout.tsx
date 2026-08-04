@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
-import { FolderTree, PanelRightClose, PanelRightOpen, UserCircle2 } from "lucide-react";
+import { FolderTree, PanelRightClose, PanelRightOpen, Sparkles, UserCircle2 } from "lucide-react";
 import type {
   ChatMessage,
   TodoItem,
@@ -66,6 +66,7 @@ interface LayoutProps {
 
 export function Layout(props: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [brandIconFailed, setBrandIconFailed] = useState(false);
 
   const showFiles = props.config.show_files;
   const email = props.userEmail || "";
@@ -79,7 +80,18 @@ export function Layout(props: LayoutProps) {
         className="grid grid-cols-[1fr_auto_1fr] items-center px-5 h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)]"
       >
         <div className="flex items-center gap-2.5 justify-self-start min-w-0">
-          <img src={brandIcon} alt="Arlie" className="w-7 h-7 rounded-md object-cover" />
+          {!brandIconFailed ? (
+            <img
+              src={brandIcon}
+              alt="Arlie"
+              className="w-7 h-7 rounded-md object-cover"
+              onError={() => setBrandIconFailed(true)}
+            />
+          ) : (
+            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-dark)] flex items-center justify-center">
+              <Sparkles size={14} className="text-white" />
+            </div>
+          )}
           <span className="text-[20px] leading-none font-semibold tracking-tight text-[var(--color-text)] whitespace-nowrap">
             Arlie
           </span>

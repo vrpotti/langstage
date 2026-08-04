@@ -44,6 +44,7 @@ export function ChatPanel({
   onUpload,
 }: ChatPanelProps) {
   const [input, setInput] = useState("");
+  const [iconFailed, setIconFailed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -136,11 +137,12 @@ export function ChatPanel({
           {/* Welcome state */}
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 gap-5">
-              {iconUrl ? (
+              {iconUrl && !iconFailed ? (
                 <img
                   src={iconUrl}
                   alt=""
                   className="w-12 h-12 rounded-xl object-cover shadow-sm"
+                  onError={() => setIconFailed(true)}
                 />
               ) : (
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-dark)] flex items-center justify-center shadow-sm">

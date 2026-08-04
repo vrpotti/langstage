@@ -223,16 +223,25 @@ def create_fastapi_app(
 
         return expired, owner_id, status
 
-    async def _authorize_session_request(request: Request, session_id: str) -> tuple[bool, bool, str, str, dict, dict]:
+    async def _authorize_session_request(request: Request, session_id: str) -> tuple[bool, bool, str, str, dict, dict, str]:
         authentik_info, identity_candidates, raw_headers = _extract_authentik_info(request)
+        if not identity_candidates:
+            return False, False, "", "", authentik_info, raw_headers, "unauthenticated"
+
         data, http_status = await _fetch_playground_session(session_id)
+        if data is None and http_status == 404:
+            return False, False, "", "", authentik_info, raw_headers, "session_not_found"
         if data is None or http_status not in (200, 410):
-            return False, False, "", "", authentik_info, raw_headers
+            return False, False, "", "", authentik_info, raw_headers, "upstream_error"
 
         expired, owner_id, status = _is_session_expired(data, http_status)
         authorized_owner = bool(identity_candidates) and bool(owner_id) and owner_id in identity_candidates
-        authorized = authorized_owner and not expired
-        return authorized, expired, owner_id, status, authentik_info, raw_headers
+        if not authorized_owner:
+            return False, False, owner_id, status, authentik_info, raw_headers, "session_owner_mismatch"
+        authorized = not expired
+        if expired:
+            return False, True, owner_id, status, authentik_info, raw_headers, "session_expired"
+        return True, False, owner_id, status, authentik_info, raw_headers, "ok"
 
     @app.middleware("http")
     async def _session_file_middleware(request, call_next):
@@ -258,9 +267,9 @@ def create_fastapi_app(
             return JSONResponse({"detail": "missing session_id for file request"}, status_code=400)
 
         if needs_owner_guard and sid:
-            authorized, expired, owner_id, _, _, _ = await _authorize_session_request(request, sid)
+            authorized, expired, owner_id, _, _, _, reason = await _authorize_session_request(request, sid)
             if not authorized:
-                detail = "session_expired" if expired else "session_forbidden"
+                detail = "session_expired" if expired else reason
                 return JSONResponse({"detail": detail, "owner_id": owner_id}, status_code=403)
 
         token = _SESSION_CV.set(sid)
@@ -381,7 +390,7 @@ def create_fastapi_app(
     @app.get("/api/skills")
     async def skills_list():
         """Return available skill folder names for slash-command autocomplete."""
-        skills_root = Path(os.getenv("PLAYGROUND_SKILLS_DIR", "/opt/skills-shared"))
+        skills_root = Path(os.getenv("PLAYGROUND_SKILLS_DIR", "/opt/data/skills-shared"))
         if not skills_root.exists() or not skills_root.is_dir():
             return JSONResponse({"skills": []})
 
@@ -406,55 +415,41 @@ def create_fastapi_app(
         session_id = request.query_params.get("session_id", "")
         authentik_info, _, authentik_raw_headers = _extract_authentik_info(request)
 
+        def _reason_message(reason: str) -> str:
+            if reason == "session_expired":
+                return "This session is expired. Create a new one."
+            if reason == "unauthenticated":
+                return "Unauthenticated. Please sign in to continue."
+            if reason == "session_owner_mismatch":
+                return "This session belongs to another user."
+            if reason == "session_not_found":
+                return "Session not found. It may have expired."
+            if reason == "upstream_error":
+                return "Could not validate session right now."
+            if reason == "missing_session_id":
+                return "Missing session id."
+            return "OK"
+
         if not session_id:
             return JSONResponse(
                 {
                     "authorized": False,
                     "expired": False,
                     "error": "missing_session_id",
+                    "reason": "missing_session_id",
+                    "message": _reason_message("missing_session_id"),
                     "authentik": authentik_info,
                     "authentik_raw_headers": authentik_raw_headers,
                 },
                 status_code=400,
             )
 
+        authorized, expired, owner_id, status, _, _, reason = await _authorize_session_request(request, session_id)
         data, http_status = await _fetch_playground_session(session_id)
-        if data is None or http_status == 404:
-            return JSONResponse(
-                {
-                    "authorized": False,
-                    "expired": False,
-                    "error": "session_not_found",
-                    "authentik": authentik_info,
-                    "authentik_raw_headers": authentik_raw_headers,
-                },
-                status_code=200,
-            )
-        if http_status not in (200, 410):
-            return JSONResponse(
-                {
-                    "authorized": False,
-                    "expired": False,
-                    "error": "upstream_error",
-                    "authentik": authentik_info,
-                    "authentik_raw_headers": authentik_raw_headers,
-                },
-                status_code=200,
-            )
-
-        expired, owner_id, status = _is_session_expired(data, http_status)
-        identity_candidates = {
-            v
-            for v in (
-                (authentik_info.get("email") or "").strip().lower(),
-                (authentik_info.get("username") or "").strip().lower(),
-                (authentik_info.get("uid") or "").strip().lower(),
-            )
-            if v
-        }
-        authorized_owner = bool(identity_candidates) and bool(owner_id) and owner_id in identity_candidates
-        authorized = authorized_owner and not expired
+        if data is None:
+            data = {}
         expires_at = (data.get("expires_at") or data.get("expiresAt") or "").strip()
+        authorized_owner = reason in ("ok", "session_expired")
 
         return JSONResponse(
             {
@@ -464,6 +459,8 @@ def create_fastapi_app(
                 "expires_at": expires_at,
                 "owner_id": owner_id,
                 "session_status": status,
+                "reason": reason,
+                "message": _reason_message(reason),
                 "authentik": authentik_info,
                 "authentik_raw_headers": authentik_raw_headers,
             }
@@ -501,6 +498,11 @@ def create_fastapi_app(
         assets_dir = static_dir / "assets"
         if assets_dir.exists():
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        # Serve public branding assets copied by Vite build (e.g. /branding/*.svg).
+        branding_dir = static_dir / "branding"
+        if branding_dir.exists():
+            app.mount("/branding", StaticFiles(directory=str(branding_dir)), name="branding")
 
         # Favicon
         favicon = static_dir / "favicon.ico"

@@ -162,14 +162,28 @@
                 return r.json();
               })
               .then(function (d) {
-                if (d.expired) {
+                var reason = (d && d.reason) || "";
+                if (reason === "unauthenticated") {
                   _sessionAuthorized = false;
-                  _showBlock("Session expired. Please start a new playground session.", "rgba(30,30,40,0.95)");
+                  _showBlock("Unauthenticated. Please sign in to continue.", "rgba(124,45,18,0.95)");
+                  _startObserver();
+                  return;
+                }
+                if (reason === "session_expired" || d.expired) {
+                  _sessionAuthorized = false;
+                  _showBlock("This session is expired. Create a new one.", "rgba(30,30,40,0.95)");
+                  _startObserver();
+                  return;
+                }
+                if (reason === "session_owner_mismatch") {
+                  _sessionAuthorized = false;
+                  _showBlock("This session belongs to another user.", "rgba(124,45,18,0.95)");
                   _startObserver();
                   return;
                 }
                 if (d.authorized === false) {
-                  _showBlock("Not authorized - this session belongs to another user.", "rgba(124,45,18,0.95)");
+                  _sessionAuthorized = false;
+                  _showBlock((d && d.message) || "Session access denied.", "rgba(124,45,18,0.95)");
                   _startObserver();
                   return;
                 }
