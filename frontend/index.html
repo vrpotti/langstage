@@ -14,7 +14,11 @@
         try {
           var p = new URLSearchParams(window.location.search);
           var sid = p.get("sessionId");
-          var skillName = p.get("skillName") || "";
+          var skillNamesRaw = p.get("skillNames") || "";
+          var parsedSkillNames = skillNamesRaw
+            ? skillNamesRaw.split(",").map(function (s) { return (s || "").trim(); }).filter(Boolean)
+            : [];
+          var skillName = p.get("skillName") || (parsedSkillNames.length ? parsedSkillNames[0] : "");
           if (!sid) return;
 
           var tabKey = "langstage-session:" + sid;
@@ -101,6 +105,9 @@
                 }
                 if (skillName && !u.searchParams.has("playground_skill_name")) {
                   u.searchParams.set("playground_skill_name", skillName);
+                }
+                if (parsedSkillNames.length && !u.searchParams.has("playground_skill_names")) {
+                  u.searchParams.set("playground_skill_names", parsedSkillNames.join(","));
                 }
                 url = u.toString();
               }

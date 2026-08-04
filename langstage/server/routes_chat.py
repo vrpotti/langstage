@@ -190,7 +190,13 @@ def create_chat_router(
         history_key = request.query_params.get("playground_history_id") or session.id
         session.file_session_id = file_session_id
         session.history_key = history_key
+        skill_names_raw = request.query_params.get("playground_skill_names") or request.query_params.get("skillNames") or ""
+        skill_names = [part.strip() for part in skill_names_raw.split(",") if part.strip()]
+        if skill_names:
+            session.skill_names = skill_names
         skill_key = request.query_params.get("playground_skill_name") or request.query_params.get("skillName") or ""
+        if not skill_key and skill_names:
+            skill_key = skill_names[0]
         if skill_key:
             session.skill_name = skill_key
 
