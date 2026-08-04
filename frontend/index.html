@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LangStage</title>
+    <title>Arlie Skill Hub Playground</title>
   </head>
   <body>
     <div id="root"></div>
@@ -144,6 +144,9 @@
               }
 
               var isFilesApi = path === "/api/files" || path.indexOf("/api/files/") === 0;
+              if (isFilesApi && (_guardActive || _sessionAuthorized === false)) {
+                return Promise.reject(new Error("Session expired or unauthorized"));
+              }
               if (isFilesApi && !parsed.searchParams.has("session_id")) {
                 parsed.searchParams.set("session_id", sid);
                 var nextUrl = parsed.toString();
@@ -159,16 +162,25 @@
                 return r.json();
               })
               .then(function (d) {
+                try {
+                  console.info("[arlie] session-status", d);
+                  if (d && d.authentik) {
+                    console.info("[arlie] authentik headers", d.authentik);
+                  }
+                } catch (_e) {}
+
+                if (d.expired) {
+                  _sessionAuthorized = false;
+                  _showBlock("Session expired. Please start a new playground session.", "rgba(30,30,40,0.95)");
+                  _startObserver();
+                  return;
+                }
                 if (d.authorized === false) {
                   _showBlock("Not authorized - this session belongs to another user.", "rgba(124,45,18,0.95)");
                   _startObserver();
                   return;
                 }
                 _sessionAuthorized = true;
-                if (d.expired) {
-                  _showBlock("Session expired. Please start a new playground session.", "rgba(30,30,40,0.95)");
-                  _startObserver();
-                }
               })
               .catch(function () {
                 _showBlock("Session authorization check failed. Access is blocked for safety.", "rgba(124,45,18,0.95)");

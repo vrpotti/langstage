@@ -87,6 +87,9 @@ export function Layout(props: LayoutProps) {
           <h1 className="text-sm font-semibold tracking-tight text-[var(--color-text)]">
             {props.config.title}
           </h1>
+          <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-card)] px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] text-[var(--color-text-secondary)]">
+            ARLIE
+          </span>
           {props.config.subtitle && (
             <span className="text-[11px] text-[var(--color-text-muted)] hidden sm:inline border-l border-[var(--color-border)] pl-2.5">
               {props.config.subtitle}

@@ -262,10 +262,26 @@ def create_fastapi_app(
             request.headers.get("x-authentik-email", "")
             or request.headers.get("x-forwarded-email", "")
             or request.headers.get("x-auth-request-email", "")
+            or request.headers.get("x-authentik-preferred-username", "")
         ).strip().lower()
+        authentik_info = {
+            "email": user_email,
+            "username": (request.headers.get("x-authentik-username", "") or "").strip(),
+            "name": (request.headers.get("x-authentik-name", "") or "").strip(),
+            "uid": (request.headers.get("x-authentik-uid", "") or "").strip(),
+            "groups": (request.headers.get("x-authentik-groups", "") or "").strip(),
+        }
 
         if not session_id:
-            return JSONResponse({"authorized": False, "expired": False, "error": "missing_session_id"}, status_code=400)
+            return JSONResponse(
+                {
+                    "authorized": False,
+                    "expired": False,
+                    "error": "missing_session_id",
+                    "authentik": authentik_info,
+                },
+                status_code=400,
+            )
 
         api_base = os.getenv(
             "SKILLS_HUB_API_BASE_URL",
@@ -290,32 +306,53 @@ def create_fastapi_app(
 
         data, http_status = await asyncio.to_thread(_fetch_session)
         if data is None or http_status == 404:
-            return JSONResponse({"authorized": False, "expired": False, "error": "session_not_found"}, status_code=200)
+            return JSONResponse(
+                {
+                    "authorized": False,
+                    "expired": False,
+                    "error": "session_not_found",
+                    "authentik": authentik_info,
+                },
+                status_code=200,
+            )
         if http_status not in (200, 410):
-            return JSONResponse({"authorized": False, "expired": False, "error": "upstream_error"}, status_code=200)
+            return JSONResponse(
+                {
+                    "authorized": False,
+                    "expired": False,
+                    "error": "upstream_error",
+                    "authentik": authentik_info,
+                },
+                status_code=200,
+            )
 
-        owner_id = (data.get("owner_id") or "").strip().lower()
-        status = data.get("status", "")
-        expires_at = data.get("expires_at", "")
+        owner_id = (data.get("owner_id") or data.get("ownerId") or "").strip().lower()
+        status = str(data.get("status", "") or "").strip().lower()
+        expires_at = (data.get("expires_at") or data.get("expiresAt") or "").strip()
 
         expired = http_status == 410 or status in ("expired", "closed")
         if not expired and expires_at:
             try:
-                exp = datetime.fromisoformat(expires_at)
+                normalized_expires_at = expires_at.replace("Z", "+00:00")
+                exp = datetime.fromisoformat(normalized_expires_at)
                 if exp.tzinfo is None:
                     exp = exp.replace(tzinfo=timezone.utc)
                 expired = datetime.now(timezone.utc) >= exp
             except ValueError:
                 pass
 
-        authorized = bool(user_email) and bool(owner_id) and owner_id == user_email
+        authorized_owner = bool(user_email) and bool(owner_id) and owner_id == user_email
+        authorized = authorized_owner and not expired
 
         return JSONResponse(
             {
                 "authorized": authorized,
+                "authorized_owner": authorized_owner,
                 "expired": expired,
                 "expires_at": expires_at,
                 "owner_id": owner_id,
+                "session_status": status,
+                "authentik": authentik_info,
             }
         )
 
