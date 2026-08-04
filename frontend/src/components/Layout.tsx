@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Allotment } from "allotment";
 import "allotment/dist/style.css";
-import { FolderTree, PanelRightClose, PanelRightOpen, Sparkles } from "lucide-react";
+import { FolderTree, PanelRightClose, PanelRightOpen, Sparkles, UserCircle2 } from "lucide-react";
 import type {
   ChatMessage,
   TodoItem,
@@ -26,6 +26,7 @@ import { StatusBar } from "./StatusBar";
 
 interface LayoutProps {
   config: AppConfig;
+  userEmail?: string;
   messages: ChatMessage[];
   todos: TodoItem[];
   isStreaming: boolean;
@@ -67,6 +68,7 @@ export function Layout(props: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const showFiles = props.config.show_files;
+  const email = props.userEmail || "";
 
   return (
     <div className="h-full flex flex-col bg-[var(--color-surface)]">
@@ -97,6 +99,15 @@ export function Layout(props: LayoutProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {email && (
+            <span
+              className="flex items-center gap-1 text-[11px] text-[var(--color-text-muted)] bg-[var(--color-card)] border border-[var(--color-border)] rounded-full px-2.5 py-0.5 max-w-[200px] truncate"
+              title={email}
+            >
+              <UserCircle2 size={12} className="shrink-0 text-[var(--color-text-secondary)]" />
+              {email}
+            </span>
+          )}
           <StatusBar
             connectionStatus={props.connectionStatus}
             isStreaming={props.isStreaming}

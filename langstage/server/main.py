@@ -248,6 +248,28 @@ def create_fastapi_app(
             status_code=200 if ok else 503,
         )
 
+    @app.get("/api/me")
+    async def me(request: Request):
+        """Return the authenticated user's identity from authentik proxy headers.
+
+        Reads the standard headers injected by the authentik forward-auth outpost
+        (``x-authentik-email``, ``x-authentik-username``, ``x-authentik-name``,
+        ``x-authentik-uid``) plus common proxy alternatives so the UI can display
+        "logged in as …" without needing a separate identity round-trip.
+        """
+        email = (
+            request.headers.get("x-authentik-email", "")
+            or request.headers.get("x-forwarded-email", "")
+            or request.headers.get("x-auth-request-email", "")
+            or request.headers.get("x-authentik-preferred-username", "")
+        ).strip().lower()
+        return JSONResponse({
+            "email": email,
+            "username": (request.headers.get("x-authentik-username", "") or "").strip(),
+            "name": (request.headers.get("x-authentik-name", "") or "").strip(),
+            "uid": (request.headers.get("x-authentik-uid", "") or "").strip(),
+        })
+
     @app.get("/api/session-status")
     async def session_status(request: Request):
         import asyncio

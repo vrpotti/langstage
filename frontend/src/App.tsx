@@ -25,6 +25,7 @@ const DEFAULT_CONFIG: AppConfig = {
 export default function App() {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG);
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
 
   // Fetch app config and custom CSS from server
   useEffect(() => {
@@ -37,6 +38,14 @@ export default function App() {
       .catch(() => {
         setConfigLoaded(true);
       });
+
+    fetch("/api/me")
+      .then((res) => res.json())
+      .then((data) => {
+        const email = data?.email || data?.username || data?.name || "";
+        setUserEmail(email);
+      })
+      .catch(() => {});
 
     // Load custom CSS theme if configured
     fetch("/api/custom-css")
@@ -122,6 +131,7 @@ export default function App() {
   return (
     <Layout
       config={config}
+      userEmail={userEmail}
       messages={messages}
       todos={todos}
       isStreaming={isStreaming}
