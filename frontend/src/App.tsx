@@ -104,7 +104,7 @@ export default function App() {
     createFolder,
     deletePath,
     setSelectedFile,
-  } = useFileTree(fileChanges, getSessionId);
+  } = useFileTree(fileChanges);
 
   const { items: canvasItems, deleteItem, clearAll, exportMarkdown } =
     useCanvas(fileChanges);

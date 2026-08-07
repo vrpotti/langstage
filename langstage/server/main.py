@@ -246,7 +246,12 @@ def create_fastapi_app(
     @app.middleware("http")
     async def _session_file_middleware(request, call_next):
         path = request.url.path or ""
-        sid = request.query_params.get("session_id", "") or request.query_params.get("playground_session_id", "")
+        # playground_session_id is the Arlie-assigned ID that the ownership API
+        # knows about. session_id is the LangStage-internal UUID (used for adapter
+        # routing); it is NOT registered with the Arlie API, so using it for an
+        # ownership check always returns 404 / session_not_found.
+        # Priority: playground_session_id → session_id → Referer sessionId.
+        sid = request.query_params.get("playground_session_id", "") or request.query_params.get("session_id", "")
         if not sid:
             # Fallback for clients that omit session_id on file endpoints:
             # derive from the page URL query (sessionId) carried in Referer.

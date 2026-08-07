@@ -12,10 +12,7 @@ interface FileTreeState {
   error: string | null;
 }
 
-export function useFileTree(
-  fileChanges: { event: string; path: string }[],
-  getSessionId?: () => string | null,
-) {
+export function useFileTree(fileChanges: { event: string; path: string }[]) {
   const [tree, setTree] = useState<FileTreeState>({
     entries: [],
     loading: true,
@@ -26,17 +23,23 @@ export function useFileTree(
   const [workspacePath, setWorkspacePath] = useState("/");
 
   /**
-   * Append session_id as a query param to any URL (with or without existing params).
-   * Safe to call when getSessionId is undefined or returns null.
+   * Append session_id (Arlie playground UUID from ?sessionId= page param) to
+   * any file API URL.  index.html does the same injection at the fetch intercept
+   * level, but that only fires when the param is absent — this ensures it is
+   * present from the start so the middleware can scope the workspace correctly.
    */
+  const playgroundSid = new URLSearchParams(window.location.search).get("sessionId") ?? "";
+
   const withSid = useCallback(
     (url: string) => {
-      const sid = getSessionId?.();
-      if (!sid) return url;
+      if (!playgroundSid) return url;
       const sep = url.includes("?") ? "&" : "?";
-      return `${url}${sep}session_id=${encodeURIComponent(sid)}`;
+      return `${url}${sep}session_id=${encodeURIComponent(playgroundSid)}`;
     },
-    [getSessionId],
+    // playgroundSid is derived from window.location.search which never changes
+    // during a session — the dep array can be empty to avoid recreating the callback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
 
   const fetchTree = useCallback(async (path = "/", depth = 1) => {
