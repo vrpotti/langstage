@@ -22,7 +22,7 @@ interface FileBrowserProps {
   onToggleDir: (path: string) => void;
   onOpenFile: (path: string) => void;
   onEnterDir: (path: string) => void;
-  onUpload: (file: File) => void;
+  onUpload: (file: File) => void | Promise<void>;
   onCreateFolder: (name: string) => void;
   onDelete: (path: string) => void;
 }

@@ -27,7 +27,7 @@ interface ChatPanelProps {
   createWorkflowPrompt?: string;
   onSend: (content: string) => void;
   onCancel: () => void;
-  onUpload: (file: File) => void;
+  onUpload: (file: File) => void | Promise<void>;
 }
 
 export function ChatPanel({

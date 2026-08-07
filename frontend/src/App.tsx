@@ -88,6 +88,8 @@ export default function App() {
     respondToInterrupt,
     cancelStream,
     resetSession,
+    getSessionId,
+    addLocalMessage,
   } = useAgentStream();
 
   const {
@@ -102,7 +104,7 @@ export default function App() {
     createFolder,
     deletePath,
     setSelectedFile,
-  } = useFileTree(fileChanges);
+  } = useFileTree(fileChanges, getSessionId);
 
   const { items: canvasItems, deleteItem, clearAll, exportMarkdown } =
     useCanvas(fileChanges);
@@ -119,6 +121,18 @@ export default function App() {
   const handleSend = useCallback(
     (content: string) => sendMessage(content, { cwd: workspacePath }),
     [sendMessage, workspacePath]
+  );
+
+  const handleUpload = useCallback(
+    async (file: File) => {
+      const result = await uploadFile(file);
+      if (result.success) {
+        addLocalMessage(`📎 Uploaded: **${file.name}**`);
+      } else {
+        addLocalMessage(`❌ Upload failed: **${file.name}**${result.error ? ` — ${result.error}` : ""}`);
+      }
+    },
+    [uploadFile, addLocalMessage]
   );
 
   // Update document title
@@ -157,7 +171,7 @@ export default function App() {
       onOpenFile={openFile}
       onCloseFile={() => setSelectedFile(null)}
       onEnterDir={enterDir}
-      onUpload={uploadFile}
+      onUpload={handleUpload}
       onCreateFolder={createFolder}
       onDeletePath={deletePath}
       canvasItems={canvasItems}

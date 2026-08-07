@@ -46,7 +46,7 @@ interface LayoutProps {
   onOpenFile: (path: string) => void;
   onCloseFile: () => void;
   onEnterDir: (path: string) => void;
-  onUpload: (file: File) => void;
+  onUpload: (file: File) => void | Promise<void>;
   onCreateFolder: (name: string) => void;
   onDeletePath: (path: string) => void;
   canvasItems: CanvasItem[];

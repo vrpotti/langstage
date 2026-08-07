@@ -12,7 +12,10 @@ interface FileTreeState {
   error: string | null;
 }
 
-export function useFileTree(fileChanges: { event: string; path: string }[]) {
+export function useFileTree(
+  fileChanges: { event: string; path: string }[],
+  getSessionId?: () => string | null,
+) {
   const [tree, setTree] = useState<FileTreeState>({
     entries: [],
     loading: true,
@@ -22,10 +25,24 @@ export function useFileTree(fileChanges: { event: string; path: string }[]) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(["/"]));
   const [workspacePath, setWorkspacePath] = useState("/");
 
+  /**
+   * Append session_id as a query param to any URL (with or without existing params).
+   * Safe to call when getSessionId is undefined or returns null.
+   */
+  const withSid = useCallback(
+    (url: string) => {
+      const sid = getSessionId?.();
+      if (!sid) return url;
+      const sep = url.includes("?") ? "&" : "?";
+      return `${url}${sep}session_id=${encodeURIComponent(sid)}`;
+    },
+    [getSessionId],
+  );
+
   const fetchTree = useCallback(async (path = "/", depth = 1) => {
     try {
       const res = await fetch(
-        `/api/files/tree?path=${encodeURIComponent(path)}&depth=${depth}`
+        withSid(`/api/files/tree?path=${encodeURIComponent(path)}&depth=${depth}`)
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -34,7 +51,7 @@ export function useFileTree(fileChanges: { event: string; path: string }[]) {
       console.error("Failed to fetch file tree:", err);
       return [];
     }
-  }, []);
+  }, [withSid]);
 
   const loadRoot = useCallback(async () => {
     setTree((s) => ({ ...s, loading: true }));
@@ -101,7 +118,7 @@ export function useFileTree(fileChanges: { event: string; path: string }[]) {
   const openFile = useCallback(async (path: string) => {
     try {
       const res = await fetch(
-        `/api/files/preview?path=${encodeURIComponent(path)}`
+        withSid(`/api/files/preview?path=${encodeURIComponent(path)}`)
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: FilePreview = await res.json();
@@ -109,7 +126,7 @@ export function useFileTree(fileChanges: { event: string; path: string }[]) {
     } catch (err) {
       console.error("Failed to preview file:", err);
     }
-  }, []);
+  }, [withSid]);
 
   const enterDir = useCallback(
     (path: string) => {
@@ -121,21 +138,33 @@ export function useFileTree(fileChanges: { event: string; path: string }[]) {
   );
 
   const uploadFile = useCallback(
-    async (file: File) => {
+    async (file: File): Promise<{ success: boolean; error?: string }> => {
       const form = new FormData();
       form.append("file", file);
       try {
         const res = await fetch(
-          `/api/files/upload?path=${encodeURIComponent(workspacePath)}`,
+          withSid(`/api/files/upload?path=${encodeURIComponent(workspacePath)}`),
           { method: "POST", body: form }
         );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const body = await res.json();
+            if (body?.detail) detail = String(body.detail);
+          } catch {
+            // non-JSON body — keep the status code string
+          }
+          return { success: false, error: detail };
+        }
         loadRoot();
+        return { success: true };
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
         console.error("Failed to upload file:", err);
+        return { success: false, error: msg };
       }
     },
-    [workspacePath, loadRoot]
+    [workspacePath, loadRoot, withSid]
   );
 
   const createFolder = useCallback(
@@ -145,7 +174,7 @@ export function useFileTree(fileChanges: { event: string; path: string }[]) {
           ? `/${name}`
           : `${workspacePath}/${name}`;
       try {
-        const res = await fetch("/api/files/mkdir", {
+        const res = await fetch(withSid("/api/files/mkdir"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ path: folderPath }),
@@ -156,13 +185,13 @@ export function useFileTree(fileChanges: { event: string; path: string }[]) {
         console.error("Failed to create folder:", err);
       }
     },
-    [workspacePath, loadRoot]
+    [workspacePath, loadRoot, withSid]
   );
 
   const deletePath = useCallback(
     async (path: string) => {
       try {
-        const res = await fetch("/api/files/delete", {
+        const res = await fetch(withSid("/api/files/delete"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ path }),
@@ -173,7 +202,7 @@ export function useFileTree(fileChanges: { event: string; path: string }[]) {
         console.error("Failed to delete:", err);
       }
     },
-    [loadRoot]
+    [loadRoot, withSid]
   );
 
   return {

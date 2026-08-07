@@ -543,6 +543,21 @@ export function useAgentStream() {
     setReconnectKey((k) => k + 1);
   }, []);
 
+  const getSessionId = useCallback(() => sessionIdRef.current, []);
+
+  const addLocalMessage = useCallback((content: string, role: "system" | "user" = "system") => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: nextId(),
+        role,
+        content,
+        toolCalls: [],
+        timestamp: Date.now(),
+      },
+    ]);
+  }, []);
+
   return {
     messages,
     isStreaming,
@@ -556,5 +571,7 @@ export function useAgentStream() {
     respondToInterrupt,
     cancelStream,
     resetSession,
+    getSessionId,
+    addLocalMessage,
   };
 }
