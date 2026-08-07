@@ -436,6 +436,12 @@ export function useAgentStream() {
     };
   }, [dispatch, flushContentBuffer, reconnectKey]);
 
+  // The Arlie playground session ID from the page URL (?sessionId=...).
+  // Included in every chat POST so the server can scope the agent's workspace
+  // correctly even before the SSE stream has set file_session_id on the session.
+  const playgroundSid =
+    new URLSearchParams(window.location.search).get("sessionId") ?? undefined;
+
   // --- Actions via fetch POST ---
   const sendMessage = useCallback(
     (content: string, meta?: { cwd?: string }) => {
@@ -460,13 +466,14 @@ export function useAgentStream() {
           session_id: sessionIdRef.current,
           content,
           cwd: meta?.cwd,
+          playground_session_id: playgroundSid,
         }),
       }).catch((err) => {
         console.error("Failed to send message:", err);
         setIsStreaming(false);
       });
     },
-    []
+    [playgroundSid]
   );
 
   const respondToInterrupt = useCallback(
@@ -482,13 +489,14 @@ export function useAgentStream() {
         body: JSON.stringify({
           session_id: sessionIdRef.current,
           decisions,
+          playground_session_id: playgroundSid,
         }),
       }).catch((err) => {
         console.error("Failed to send interrupt response:", err);
         setIsStreaming(false);
       });
     },
-    []
+    [playgroundSid]
   );
 
   const cancelStream = useCallback(() => {
@@ -502,12 +510,13 @@ export function useAgentStream() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         session_id: sessionIdRef.current,
+        playground_session_id: playgroundSid,
       }),
     }).catch((err) => {
       console.error("Failed to cancel stream:", err);
     });
     // isStreaming will be set to false when the "cancelled" event arrives via SSE
-  }, [flushContentBuffer]);
+  }, [flushContentBuffer, playgroundSid]);
 
   const resetSession = useCallback(() => {
     // Clean up backend session

@@ -121,6 +121,9 @@ class ChatRequest(BaseModel):
     session_id: str
     content: str
     cwd: str | None = None
+    # Arlie playground session ID — lets the server scope the agent workspace
+    # even before the SSE stream has set file_session_id on the session object.
+    playground_session_id: str | None = None
 
 
 class ChatCompleteRequest(BaseModel):
@@ -136,10 +139,12 @@ class ChatCompleteRequest(BaseModel):
 class InterruptRequest(BaseModel):
     session_id: str
     decisions: list[dict]
+    playground_session_id: str | None = None
 
 
 class CancelRequest(BaseModel):
     session_id: str
+    playground_session_id: str | None = None
 
 
 def context_parts(cwd: str | None = None) -> list[str]:
@@ -259,7 +264,14 @@ def create_chat_router(
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
         history_key = getattr(session, "history_key", body.session_id)
-        file_session_id = getattr(session, "file_session_id", body.session_id)
+        # Prefer the playground_session_id from the request body — it is always
+        # correct (set from the page URL) and eliminates the race where a chat
+        # POST arrives before the SSE stream has set file_session_id on the session.
+        file_session_id = (
+            body.playground_session_id
+            or getattr(session, "file_session_id", None)
+            or body.session_id
+        )
         skill_name = (getattr(session, "skill_name", "") or "").strip()
 
         user_content = body.content
@@ -322,7 +334,12 @@ def create_chat_router(
         session = adapter.get(body.session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
-        _set_playground_session_cv(getattr(session, "file_session_id", body.session_id))
+        file_session_id = (
+            body.playground_session_id
+            or getattr(session, "file_session_id", None)
+            or body.session_id
+        )
+        _set_playground_session_cv(file_session_id)
         adapter.submit_decisions(body.session_id, body.decisions)
         return {"status": "ok", "session_id": body.session_id}
 
