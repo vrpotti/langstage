@@ -27,6 +27,25 @@ from langstage.tasks import SqliteTaskStore
 from langstage.workspace.file_manager import FileManager, _SESSION_CV
 from langstage.workspace.canvas_manager import CanvasManager
 
+# ag-ui-langgraph's LangGraphAgent is constructed by SessionAdapter without
+# forwarding the graph's own .config attribute, so recursion_limit and
+# callbacks set on agent.config are silently lost — ensure_config then stamps
+# in the LangGraph default of 25. Patch __init__ once at module load so any
+# LangGraphAgent created from a graph that carries a .config inherits it.
+try:
+    # noqa: mid-file-import
+    from ag_ui_langgraph import LangGraphAgent as _LangGraphAgent
+    _orig_langgraph_agent_init = _LangGraphAgent.__init__
+
+    def _patched_langgraph_agent_init(self, *, name, graph, description=None, config=None, **kwargs):
+        if config is None:
+            config = dict(getattr(graph, "config", None) or {})
+        _orig_langgraph_agent_init(self, name=name, graph=graph, description=description, config=config, **kwargs)
+
+    _LangGraphAgent.__init__ = _patched_langgraph_agent_init  # type: ignore[method-assign]
+except (ImportError, AttributeError):
+    pass
+
 
 def _app_version() -> str:
     """The installed ``langstage`` version, for the health payload (gh #67)."""
