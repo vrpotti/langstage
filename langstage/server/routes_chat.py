@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from urllib import error as urllib_error, parse as urllib_parse
 from urllib import request as urllib_request
@@ -26,6 +27,40 @@ from langstage_core.adapters import SessionAdapter
 from langstage.workspace.file_manager import FileManager
 
 logger = logging.getLogger(__name__)
+
+# `/skill-name rest of message` — skill names match Agentskills / deepagents
+# conventions (lowercase, digits, hyphens; 1-64 chars).
+_SLASH_SKILL_RE = re.compile(
+    r"^/([a-zA-Z0-9][\w-]{0,63})(?:\s+(.*))?$",
+    re.DOTALL,
+)
+
+
+def _expand_slash_skill(content: str) -> str:
+    """Rewrite `/skill-name …` into an explicit skill-activation instruction.
+
+    Relying on the model alone to notice the slash and call ``read_file`` on
+    ``SKILL.md`` is unreliable — it often free-forms an answer instead. Expand
+    the message so the first tool call must be skill activation.
+    """
+    text = (content or "").lstrip()
+    match = _SLASH_SKILL_RE.match(text)
+    if not match:
+        return content
+
+    skill = match.group(1)
+    remainder = (match.group(2) or "").strip()
+    task = remainder if remainder else "(no additional user input — follow the skill defaults)"
+    skill_md = f"/skills/{skill}/SKILL.md"
+
+    return (
+        "SKILL INVOCATION (mandatory — do not skip):\n"
+        f"The user invoked `/{skill}`. Activate that skill before any other work.\n"
+        f"1. Immediately call `read_file` on `{skill_md}`.\n"
+        "2. Follow that SKILL.md exactly — do not answer from general knowledge.\n"
+        f"3. For log analysis, call `inspect_log_bundle` with skill_name=`{skill}`.\n"
+        f"4. User input for this skill:\n{task}"
+    )
 
 
 def _history_api_base() -> str:
@@ -278,6 +313,9 @@ def create_chat_router(
         message_to_send = user_content
         if skill_name and not user_content.lstrip().startswith("/"):
             message_to_send = f"/{skill_name}\n\n{user_content}"
+        # Expand `/skill-name …` into an explicit "read SKILL.md first" instruction
+        # so the model cannot free-form past the skill.
+        message_to_send = _expand_slash_skill(message_to_send)
 
         _history_api_append(history_key, "user", user_content)
         _set_playground_session_cv(file_session_id)
